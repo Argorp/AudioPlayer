@@ -1,7 +1,7 @@
-import os
 import sys
 import random
 import sqlite3
+import tempfile
 
 """PyQt6"""
 from PyQt6.QtWidgets import QMainWindow, QApplication, QWidget, QTableWidgetItem, QAbstractItemView, QFileDialog
@@ -36,11 +36,6 @@ class AudioTeka(QMainWindow, Ui_MainWindow):
         self.next_icon = QPixmap('images/next.png')
         self.previous_icon = QPixmap('images/previous.png')
         self.con = sqlite3.connect("songs.sqlite")
-        self.new_folder = r'C:\Song_files'
-        if not os.path.exists(self.new_folder):
-            os.makedirs(self.new_folder)
-        self.audio.append(('samples', r'C:\Song_files\sample-3s.mp3'))
-        self.audio.append(('keyboard', r'C:\Song_files\computer-keyboard.mp3'))
         self.setupUi(self)
         self.initUI()
 
@@ -73,18 +68,12 @@ class AudioTeka(QMainWindow, Ui_MainWindow):
         self.previous.setIcon(QIcon(self.previous_icon))
 
     def update_result(self):
-        try:
-            self.up = Choose_What_To_Add()
-            self.up.show()
-        except Exception as e:
-            print(e)
+        self.up = Choose_What_To_Add(self)
+        self.up.show()
 
     def delete(self):
-        try:
-            self.cur = Delete_Song(self)
-            self.cur.show()
-        except Exception as e:
-            print(e)
+        self.cur = Delete_Song(self)
+        self.cur.show()
 
     def update_songs(self):
         self.songs.clearSpans()
@@ -95,7 +84,7 @@ class AudioTeka(QMainWindow, Ui_MainWindow):
             self.songs.setRowCount(self.songs.rowCount() + 1)
             author = self.con.execute(f"""select name from author where id like {row[1]}""").fetchall()[0][0]
             genre = self.con.execute(f"""select name from genre where id like {row[3]}""").fetchall()[0][0]
-            add_to_table = [author, row[2], genre, ]
+            add_to_table = [author, row[2], genre]
             for j in range(3):
                 self.songs.setItem(i, j, QTableWidgetItem(add_to_table[j]))
 
@@ -147,6 +136,7 @@ class AudioTeka(QMainWindow, Ui_MainWindow):
             self.player.setPosition(self.cur_position_of_audio)
         else:
             self.cur_position_of_audio = 0
+            print(self.audio[self.current][1])
             self.player.setSource(QUrl.fromLocalFile(self.audio[self.current][1]))
         dur = self.player.duration() // 1000
         mins = dur // 60
@@ -182,6 +172,11 @@ class Delete_Song(QWidget, Ui_delete_form):
         song_name = self.lineEdit.text()
         try:
             con = sqlite3.connect("songs.sqlite")
+            bytes_to_del = con.execute(f"""select file_song from Song where name like '{song_name}'""").fetchall()[0][0]
+            for i in self.cur_main.audio:
+                if i[0] is bytes_to_del:
+                    self.cur_main.audio.remove(i)
+                    break
             con.execute(f"""delete from Song where name like '{song_name}'""")
             con.commit()
             con.close()
@@ -195,16 +190,16 @@ class Delete_Song(QWidget, Ui_delete_form):
                     if song_name == i[0]:
                         need_to_remove = i
                         break
-                os.remove(need_to_remove[1])
                 self.cur_main.audio.remove(need_to_remove)
-            except Exception as e:
+            except Exception:
                 self.lineEdit.setText("Не удалось удалить данную песню")
 
 
 class Choose_What_To_Add(QWidget, Ui_Form):
-    def __init__(self):
+    def __init__(self, other: AudioTeka):
         super().__init__()
         self.cur = None
+        self.main = other
         self.setupUi(self)
         self.unitUI()
 
@@ -219,7 +214,7 @@ class Choose_What_To_Add(QWidget, Ui_Form):
         elif self.sender() is self.Genre:
             self.cur = Add_Genre()
         else:
-            self.cur = Add_Song()
+            self.cur = Add_Song(self.main)
         self.cur.show()
 
 
@@ -233,14 +228,11 @@ class Add_Author(QWidget, Ui_Author_Form):
         self.pushButton.clicked.connect(self.run)
 
     def run(self):
-        try:
-            con = sqlite3.connect("songs.sqlite")
-            author_name = self.lineEdit.text()
-            con.execute(f"""insert into Author (name) values ('{author_name}')""")
-            con.commit()
-            con.close()
-        except Exception as e:
-            print(e)
+        con = sqlite3.connect("songs.sqlite")
+        author_name = self.lineEdit.text()
+        con.execute(f"""insert into Author (name) values ('{author_name}')""")
+        con.commit()
+        con.close()
 
 
 class Add_Genre(QWidget, Ui_Genre_Form):
@@ -253,19 +245,17 @@ class Add_Genre(QWidget, Ui_Genre_Form):
         self.pushButton.clicked.connect(self.run)
 
     def run(self):
-        try:
-            con = sqlite3.connect("songs.sqlite")
-            genre_name = self.lineEdit.text()
-            con.execute(f"""insert into Genre (name) values ('{genre_name}')""")
-            con.commit()
-            con.close()
-        except Exception as e:
-            print(e)
+        con = sqlite3.connect("songs.sqlite")
+        genre_name = self.lineEdit.text()
+        con.execute(f"""insert into Genre (name) values ('{genre_name}')""")
+        con.commit()
+        con.close()
 
 
 class Add_Song(QWidget, Ui_Song_Form):
-    def __init__(self):
+    def __init__(self, other: AudioTeka):
         super().__init__()
+        self.cur_main = other
         self.setupUi(self)
         self.unitUI()
 
@@ -278,15 +268,18 @@ class Add_Song(QWidget, Ui_Song_Form):
                 self, 'Выбрать аудиодорожку', '',
                 'Дорожка (*.mp3);;Все файлы (*)'
             )[0]
-            file = fname[fname.rfind(":") + 2:]
-            os.replace(fname, rf'C:\Song_files\{file}')
             con = sqlite3.connect("songs.sqlite")
             need_to_add = list(map(str.strip, self.lineEdit.text().split(',')))
-            Author_id = con.execute(f"""select id from author where Name like '{need_to_add[0]}'""").fetchall()[0][
-                0]
-            Genre_id = con.execute(f"""select id from genre where Name like '{need_to_add[2]}'""").fetchall()[0][0]
-            con.execute(f"""insert into Song (Author_id, Name, Genre_id) values ('{Author_id}', 
-            '{need_to_add[1]}', '{Genre_id}')""")
+            Author_id = con.execute("select id from author where Name = ?", (need_to_add[0],)).fetchone()[0]
+            Genre_id = con.execute("select id from genre where Name = ?", (need_to_add[2],)).fetchone()[0]
+            with open(fname, 'rb') as f:
+                temp_array = f.read()
+            con.execute("insert into Song (Author_id, Name, Genre_id, file_song) values (?, ?, ?, ?)",
+                        (Author_id, need_to_add[1], Genre_id, temp_array))
+            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as temp_file:
+                temp_file.write(temp_array)
+                temp_file_path = temp_file.name
+            self.cur_main.audio.append((temp_array, temp_file_path))
             con.commit()
             con.close()
         except Exception as e:
