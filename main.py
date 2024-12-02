@@ -136,8 +136,10 @@ class AudioTeka(QMainWindow, Ui_MainWindow):
             self.player.setPosition(self.cur_position_of_audio)
         else:
             self.cur_position_of_audio = 0
-            print(self.audio[self.current][1])
-            self.player.setSource(QUrl.fromLocalFile(self.audio[self.current][1]))
+            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as temp_file:
+                temp_file.write(bytearray(self.audio[self.current][1]))
+                temp_file_path = temp_file.name
+            self.player.setSource(QUrl.fromLocalFile(temp_file_path))
         dur = self.player.duration() // 1000
         mins = dur // 60
         sec = dur % 60
@@ -171,12 +173,7 @@ class Delete_Song(QWidget, Ui_delete_form):
         result = False
         song_name = self.lineEdit.text()
         try:
-            con = sqlite3.connect("songs.sqlite")
-            bytes_to_del = con.execute(f"""select file_song from Song where name like '{song_name}'""").fetchall()[0][0]
-            for i in self.cur_main.audio:
-                if i[0] is bytes_to_del:
-                    self.cur_main.audio.remove(i)
-                    break
+            con = sqlite3.connect('songs.sqlite')
             con.execute(f"""delete from Song where name like '{song_name}'""")
             con.commit()
             con.close()
@@ -185,12 +182,12 @@ class Delete_Song(QWidget, Ui_delete_form):
             self.lineEdit.setText("Такой песни нет!")
         if result:
             try:
-                need_to_remove = None
+                need_to_del = None
                 for i in self.cur_main.audio:
-                    if song_name == i[0]:
-                        need_to_remove = i
+                    if i[0] is song_name:
+                        need_to_del = i
                         break
-                self.cur_main.audio.remove(need_to_remove)
+                self.cur_main.audio.remove(need_to_del)
             except Exception:
                 self.lineEdit.setText("Не удалось удалить данную песню")
 
@@ -276,10 +273,8 @@ class Add_Song(QWidget, Ui_Song_Form):
                 temp_array = f.read()
             con.execute("insert into Song (Author_id, Name, Genre_id, file_song) values (?, ?, ?, ?)",
                         (Author_id, need_to_add[1], Genre_id, temp_array))
-            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as temp_file:
-                temp_file.write(temp_array)
-                temp_file_path = temp_file.name
-            self.cur_main.audio.append((temp_array, temp_file_path))
+
+            self.cur_main.audio.append((need_to_add[1], temp_array))
             con.commit()
             con.close()
         except Exception as e:
