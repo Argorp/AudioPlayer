@@ -2,6 +2,8 @@ import sys
 import random
 import sqlite3
 import tempfile
+import pathlib
+import shutil
 
 """PyQt6"""
 from PyQt6.QtWidgets import QMainWindow, QApplication, QWidget, QTableWidgetItem, QAbstractItemView, QFileDialog
@@ -16,6 +18,10 @@ from py_ui_files.author import Ui_Author_Form
 from py_ui_files.genre import Ui_Genre_Form
 from py_ui_files.song import Ui_Song_Form
 from py_ui_files.delete import Ui_delete_form
+
+"""Paths"""
+temp_dir = pathlib.Path(__file__).parent.resolve() / "temp"
+temp_dir.mkdir(parents=True, exist_ok=True)
 
 
 class AudioTeka(QMainWindow, Ui_MainWindow):
@@ -66,6 +72,13 @@ class AudioTeka(QMainWindow, Ui_MainWindow):
         self.next.setIcon(QIcon(self.next_icon))
         self.shuffle.setIcon(QIcon(self.shuffle_icon))
         self.previous.setIcon(QIcon(self.previous_icon))
+        self.make_audios()
+
+    def make_audios(self):
+        con = sqlite3.connect("songs.sqlite")
+        All_file_song = con.execute("select Name, file_song from song").fetchall()
+        for i in All_file_song:
+            self.audio.append(i)
 
     def update_result(self):
         self.up = Choose_What_To_Add(self)
@@ -136,8 +149,8 @@ class AudioTeka(QMainWindow, Ui_MainWindow):
             self.player.setPosition(self.cur_position_of_audio)
         else:
             self.cur_position_of_audio = 0
-            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as temp_file:
-                temp_file.write(bytearray(self.audio[self.current][1]))
+            with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False, dir=str(temp_dir)) as temp_file:
+                temp_file.write(self.audio[self.current][1])
                 temp_file_path = temp_file.name
             self.player.setSource(QUrl.fromLocalFile(temp_file_path))
         dur = self.player.duration() // 1000
@@ -170,26 +183,15 @@ class Delete_Song(QWidget, Ui_delete_form):
         self.pushButton.clicked.connect(self.run)
 
     def run(self):
-        result = False
         song_name = self.lineEdit.text()
-        try:
-            con = sqlite3.connect('songs.sqlite')
+        con = sqlite3.connect('songs.sqlite')
+        f = con.execute(f"""select Name from Song where name like '{song_name}'""").fetchone()
+        if f is None:
+            self.lineEdit.setText("Такой песни нет!")
+        else:
             con.execute(f"""delete from Song where name like '{song_name}'""")
             con.commit()
-            con.close()
-            result = True
-        except Exception:
-            self.lineEdit.setText("Такой песни нет!")
-        if result:
-            try:
-                need_to_del = None
-                for i in self.cur_main.audio:
-                    if i[0] is song_name:
-                        need_to_del = i
-                        break
-                self.cur_main.audio.remove(need_to_del)
-            except Exception:
-                self.lineEdit.setText("Не удалось удалить данную песню")
+        con.close()
 
 
 class Choose_What_To_Add(QWidget, Ui_Form):
@@ -282,8 +284,19 @@ class Add_Song(QWidget, Ui_Song_Form):
             self.lineEdit.setText("Неправильно введены Автор и/или Жанр. Файл может быть повреждён")
 
 
+def cleanup():
+    try:
+        shutil.rmtree(temp_dir)
+        print("Временная папка удалена.")
+    except FileNotFoundError:
+        print("Временная папка не найдена (возможно, уже удалена).")
+    except OSError as e:
+        print(f"Ошибка при удалении временной папки: {e}")
+
+
 if __name__ == '__main__':
     app = QApplication(sys.argv)
+    app.aboutToQuit.connect(cleanup)
     ex = AudioTeka()
     ex.show()
     sys.exit(app.exec())
