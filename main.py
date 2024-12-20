@@ -6,7 +6,8 @@ import pathlib
 import shutil
 
 """PyQt6"""
-from PyQt6.QtWidgets import QMainWindow, QApplication, QWidget, QTableWidgetItem, QAbstractItemView, QFileDialog
+from PyQt6.QtWidgets import QMainWindow, QApplication, QWidget, QTableWidgetItem, QAbstractItemView, QFileDialog, \
+    QListWidgetItem
 from PyQt6.QtGui import QPixmap, QIcon
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtCore import *
@@ -192,6 +193,7 @@ class Delete_Song(QWidget, Ui_delete_form):
             con.execute(f"""delete from Song where name like '{song_name}'""")
             con.commit()
         con.close()
+        self.close()
 
 
 class Choose_What_To_Add(QWidget, Ui_Form):
@@ -225,13 +227,22 @@ class Add_Author(QWidget, Ui_Author_Form):
 
     def unitUI(self):
         self.pushButton.clicked.connect(self.run)
+        con = sqlite3.connect("songs.sqlite")
+        names = con.execute("select Name from Author").fetchall()
+        for i in names:
+            self.all.addItem(QListWidgetItem(str(i[0])))
+
 
     def run(self):
         con = sqlite3.connect("songs.sqlite")
         author_name = self.lineEdit.text()
-        con.execute(f"""insert into Author (name) values ('{author_name}')""")
-        con.commit()
-        con.close()
+        if author_name is not None and author_name != '':
+            con.execute(f"""insert into Author (name) values ('{author_name}')""")
+            con.commit()
+            con.close()
+            self.close()
+        else:
+            self.lineEdit.setText("Введите настоящее имя автора")
 
 
 class Add_Genre(QWidget, Ui_Genre_Form):
@@ -242,13 +253,21 @@ class Add_Genre(QWidget, Ui_Genre_Form):
 
     def unitUI(self):
         self.pushButton.clicked.connect(self.run)
+        con = sqlite3.connect("songs.sqlite")
+        names = con.execute("select Name from Genre").fetchall()
+        for i in names:
+            self.all.addItem(QListWidgetItem(str(i[0])))
 
     def run(self):
         con = sqlite3.connect("songs.sqlite")
         genre_name = self.lineEdit.text()
-        con.execute(f"""insert into Genre (name) values ('{genre_name}')""")
-        con.commit()
-        con.close()
+        if genre_name is not None and genre_name != '':
+            con.execute(f"""insert into Genre (name) values ('{genre_name}')""")
+            con.commit()
+            con.close()
+            self.close()
+        else:
+            self.lineEdit.setText("Введите настоящее название жанра")
 
 
 class Add_Song(QWidget, Ui_Song_Form):
@@ -282,6 +301,7 @@ class Add_Song(QWidget, Ui_Song_Form):
         except Exception as e:
             print(e)
             self.lineEdit.setText("Неправильно введены Автор и/или Жанр. Файл может быть повреждён")
+        self.close()
 
 
 def cleanup():
