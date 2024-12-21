@@ -192,8 +192,14 @@ class Delete_Song(QWidget, Ui_delete_form):
         else:
             con.execute(f"""delete from Song where name like '{song_name}'""")
             con.commit()
-        con.close()
-        self.close()
+            con.close()
+            need_to_del = None
+            for i in self.cur_main.audio:
+                if i[0] == song_name:
+                    need_to_del = i
+                    break
+            self.cur_main.audio.remove(need_to_del)
+            self.close()
 
 
 class Choose_What_To_Add(QWidget, Ui_Form):
@@ -237,10 +243,13 @@ class Add_Author(QWidget, Ui_Author_Form):
         con = sqlite3.connect("songs.sqlite")
         author_name = self.lineEdit.text()
         if author_name is not None and author_name != '':
-            con.execute(f"""insert into Author (name) values ('{author_name}')""")
-            con.commit()
-            con.close()
-            self.close()
+            try:
+                con.execute(f"""insert into Author (name) values ('{author_name}')""")
+                con.commit()
+                con.close()
+                self.close()
+            except Exception:
+                self.lineEdit.setText("Такой автор уже есть!")
         else:
             self.lineEdit.setText("Введите настоящее имя автора")
 
@@ -262,10 +271,13 @@ class Add_Genre(QWidget, Ui_Genre_Form):
         con = sqlite3.connect("songs.sqlite")
         genre_name = self.lineEdit.text()
         if genre_name is not None and genre_name != '':
-            con.execute(f"""insert into Genre (name) values ('{genre_name}')""")
-            con.commit()
-            con.close()
-            self.close()
+            try:
+                con.execute(f"""insert into Genre (name) values ('{genre_name}')""")
+                con.commit()
+                con.close()
+                self.close()
+            except Exception:
+                self.lineEdit.text("Такой жанр уже есть!")
         else:
             self.lineEdit.setText("Введите настоящее название жанра")
 
@@ -275,33 +287,45 @@ class Add_Song(QWidget, Ui_Song_Form):
         super().__init__()
         self.cur_main = other
         self.setupUi(self)
+        self.con = sqlite3.connect("songs.sqlite")
         self.unitUI()
 
     def unitUI(self):
         self.pushButton.clicked.connect(self.run)
+        genres = self.con.execute("select Name from Genre").fetchall()
+        for i in genres:
+            self.genre_box.addItem(str(i[0]))
+        names = self.con.execute("select Name from Author").fetchall()
+        for i in names:
+            self.aut_box.addItem(str(i[0]))
 
     def run(self):
+        fname = QFileDialog.getOpenFileName(
+            self, 'Выбрать аудиодорожку', '',
+            'Дорожка (*.mp3);;Все файлы (*)'
+        )[0]
+        need_to_add = self.lineEdit.text()
+        author = self.aut_box.currentText()
+        genre = self.genre_box.currentText()
         try:
-            fname = QFileDialog.getOpenFileName(
-                self, 'Выбрать аудиодорожку', '',
-                'Дорожка (*.mp3);;Все файлы (*)'
-            )[0]
-            con = sqlite3.connect("songs.sqlite")
-            need_to_add = list(map(str.strip, self.lineEdit.text().split(',')))
-            Author_id = con.execute("select id from author where Name = ?", (need_to_add[0],)).fetchone()[0]
-            Genre_id = con.execute("select id from genre where Name = ?", (need_to_add[2],)).fetchone()[0]
-            with open(fname, 'rb') as f:
-                temp_array = f.read()
-            con.execute("insert into Song (Author_id, Name, Genre_id, file_song) values (?, ?, ?, ?)",
-                        (Author_id, need_to_add[1], Genre_id, temp_array))
-
-            self.cur_main.audio.append((need_to_add[1], temp_array))
-            con.commit()
-            con.close()
+            for i in self.cur_main.audio:
+                if i[0] == need_to_add:
+                    self.lineEdit.setText("Песня с таким названием уже есть")
+                    break
+            else:
+                with open(fname, 'rb') as f:
+                    temp_array = f.read()
+                author_id = self.con.execute(f"""select id from Author where name like '{author}'""").fetchone()[0]
+                genre_id = self.con.execute(f"""select id from Genre where name like '{genre}'""").fetchone()[0]
+                print(author_id, need_to_add, genre_id)
+                self.con.execute("insert into Song (Author_id, Name, Genre_id, file_song) values (?, ?, ?, ?)",
+                            (str(author_id), need_to_add, str(genre_id), temp_array))
+                self.cur_main.audio.append((need_to_add, temp_array))
+                self.con.commit()
+                self.con.close()
+                self.close()
         except Exception as e:
             print(e)
-            self.lineEdit.setText("Неправильно введены Автор и/или Жанр. Файл может быть повреждён")
-        self.close()
 
 
 def cleanup():
